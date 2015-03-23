@@ -1,0 +1,150 @@
+---
+title: "Explore and Analysis of NOAA Storm Database"
+author:
+date: 
+output: html_document
+---
+
+
+### Synopsis
+
+  Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. This project involves exploring the U.S. National Oceanic and Atmospheric Administration???s (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. The events in the database start in the year 1950 and end in November 2011. The results of summary will be shown at the end of document.
+  
+  
+### Data Processing
+
+####  Loading the Data
+
+    Load the needed libraries
+```{r message = FALSE}
+    library(dplyr)
+    library(lubridate)
+    library(stringr)
+    library(ggplot2)
+```
+    First read the file before starting any analysis.
+    
+```{r cache =TRUE}
+  if (!file.exists("repdata_data_StormData.csv.bz2")) {
+    download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
+                "repdata_data_StormData.csv.bz2")
+  
+    stormdata <- read.csv("repdata_data_StormData.csv.bz2" ,stringsAsFactors = FALSE)
+}
+```
+
+
+####  Processing the Data
+
+    Let us check the structure of the data before processing and analyzing.
+    
+```{r message = FALSE}
+    str(stormdata)
+```
+    
+    Select the columns related to harmful events and economic loss since the scope is
+    to analyze only the data related to that.
+    
+```{r}
+    df1 <- select(stormdata, BGN_DATE, EVTYPE, 
+                 FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+```
+    
+    Drop the data where no harmful and no economic loss has been recorded since it will not impact the analysis. It can be achieved by selecting the rows of data atleast if it has one value in property or crop damage or fatalaties or injuries.
+    
+```{r}
+    df1 <- filter(df1, FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0 | CROPDMG > 0)
+```
+  
+   Drop the data prior to 1996 since the measurements are not according to the standard   mentioned at the source of the data. Convert the data from character to date and drop the data prior to 1996 from the dataset for analysis.
+    
+```{r}
+    df1 <- mutate(df1, EventDate = mdy_hms(df1$BGN_DATE))
+    df1 <- filter(df1, EventDate >= mdy("01-01-1996"))
+```
+   
+   Check the different types of property and crop damange exposure multiplier fields.
+   
+```{r}
+   unique(c(as.character(df1$PROPDMGEXP), c(as.character(df1$CROPDMGEXP))))
+```
+
+  As it is shown only possible options are blanks, K, M, B which are multipliers of 1, Kilo, Million and Billion.  In the next steps will be multiplying the data in the columns appropriately.  
+  
+```{r warning = FALSE}
+    df1$PROPDMGEXP[df1$PROPDMGEXP == ""]  = 1
+    df1$PROPDMGEXP[df1$PROPDMGEXP == "K"] = 1000
+    df1$PROPDMGEXP[df1$PROPDMGEXP == "M"] = 1000000
+    df1$PROPDMGEXP[df1$PROPDMGEXP == "B"] = 1000000000
+
+    df1$CROPDMGEXP[df1$CROPDMGEXP == ""]  = 1
+    df1$CROPDMGEXP[df1$CROPDMGEXP == "K"] = 1000
+    df1$CROPDMGEXP[df1$CROPDMGEXP == "M"] = 1000000
+    df1$CROPDMGEXP[df1$CROPDMGEXP == "B"] = 1000000000
+
+    df1$PROPDMGEXP <- as.numeric(df1$PROPDMGEXP)
+    df1$CROPDMGEXP <- as.numeric(df1$CROPDMGEXP)
+
+    df1 <- mutate(df1, PropertyDamage = PROPDMG * PROPDMGEXP)
+    df1 <- mutate(df1, CropDamage = CROPDMG * CROPDMGEXP)
+
+```
+    
+    Now clean the event types to match and all have similar kind of names.
+    
+```{r}
+   df1 <- mutate(df1, EVTYPE = str_trim(toupper(EVTYPE)))
+```
+    
+### Analysis
+
+  Now we can do the totals to come up with Total Property Damages and Total Health Damage
+  
+```{r}
+    df1 <- mutate(df1, EventType = EVTYPE, 
+                  TotalHealthDamages = df1$FATALITIES + df1$INJURIES, 
+                  TotalPropCropDamages = df1$PropertyDamage + df1$CropDamage)
+
+    df2 <- select(df1, EventType, TotalHealthDamages, TotalPropCropDamages)
+    
+```
+  
+#### Most harmful events to population health.
+
+Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+```{r}
+    THD <- sort(tapply(df2$TotalHealthDamages, df2$EventType, sum), decreasing = T)
+```
+
+#### Events of greatest economic consequence.
+
+Across the United States, which types of events have the greatest economic consequences?
+
+```{r}
+    TPCD <- sort(tapply(df2$TotalPropCropDamages, df2$EventType, sum), decreasing = T)
+```
+
+### Results
+  Print the top twenty results for Property and Crop damages and related to health also.
+  
+  Property Damages in Billions
+```{r}
+    TPCDBi <- TPCD/1000000000
+    head(TPCDBi, 20)
+    
+```
+
+```{r}
+    head(THD, 20)
+```
+  
+  
+  Here the plots about harmful events and ecnomic consequences.
+  
+  
+Plot 1
+
+```{r}
+  barplot(THD[1:10], ylab = "Total harmful events")
+```
